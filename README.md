@@ -5,8 +5,9 @@ An intelligent test case generation system that integrates with Google Docs (Fun
 ## Features
 
 - **Document Integration**: Link Google Docs (FRS) and Google Sheets (Test Cases)
+- **OpenAI Integration**: Powered by GPT-4o-mini for intelligent responses and test case generation
 - **AI Question Answering**: Ask questions about FRS content and get intelligent responses
-- **Automated Test Case Generation**: Generate test cases based on requirements
+- **Automated Test Case Generation**: Generate test cases based on requirements using AI
 - **Natural Language Interface**: Chat-based interaction for both questions and test case creation
 - **Audit Trail**: Complete logging of all actions for auditability
 - **Secure Authentication**: Google OAuth integration with proper permission management
@@ -23,10 +24,11 @@ An intelligent test case generation system that integrates with Google Docs (Fun
 ## Prerequisites
 
 1. **.NET 8.0 SDK** or later
-2. **Google Cloud Project** with enabled APIs:
+2. **OpenAI API Key** for GPT-4o-mini access
+3. **Google Cloud Project** with enabled APIs:
    - Google Docs API
    - Google Sheets API
-3. **Google OAuth 2.0 credentials** (Client ID and Client Secret)
+4. **Google OAuth 2.0 credentials** (Client ID and Client Secret)
 
 ## Setup Instructions
 
@@ -56,6 +58,12 @@ An intelligent test case generation system that integrates with Google Docs (Fun
          "ClientId": "your-google-client-id",
          "ClientSecret": "your-google-client-secret"
        }
+     },
+     "OpenAI": {
+       "ApiKey": "your-openai-api-key",
+       "Model": "gpt-4o-mini",
+       "MaxTokens": 2000,
+       "Temperature": 0.7
      }
    }
    ```
@@ -119,9 +127,10 @@ TestCaseAgent/
 ## Key Components
 
 ### Backend Services
+- **OpenAIService**: Integrates with OpenAI API for intelligent responses and test case generation
 - **GoogleDocsService**: Integrates with Google Docs API to read FRS content
 - **GoogleSheetsService**: Manages test case data in Google Sheets
-- **IntelligentAgentService**: Provides AI-powered question answering and test case generation
+- **IntelligentAgentService**: Orchestrates AI-powered features with fallback to basic processing
 - **DocumentService**: Manages document links and metadata
 - **AuditService**: Tracks all user and system actions
 
