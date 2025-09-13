@@ -1,0 +1,438 @@
+@page "/teacher-pin"
+@using TestCaseAgent.Client.Models
+@using TestCaseAgent.Client.Services
+@inject IApiService ApiService
+@inject IJSRuntime JSRuntime
+@inject ILogger<TeacherPin> Logger
+
+<PageTitle>Teacher PIN Authentication</PageTitle>
+
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-key me-2"></i>
+                        Teacher PIN
+                    </h4>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            @errorMessage
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(successMessage))
+                    {
+                        <div class="alert alert-success" role="alert">
+                            <i class="fas fa-check-circle me-2"></i>
+                            @successMessage
+                        </div>
+                    }
+
+                    @if (pinResponse?.IsLocked == true)
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            <i class="fas fa-lock me-2"></i>
+                            <strong>Account Locked</strong><br/>
+                            @pinResponse.Message<br/>
+                            @if (pinResponse.LockedUntil.HasValue)
+                            {
+                                <small>Locked until: @pinResponse.LockedUntil.Value.ToString("yyyy-MM-dd HH:mm:ss")</small>
+                            }
+                        </div>
+                    }
+
+                    @if (pinResponse?.RequiresReset == true)
+                    {
+                        <div class="alert alert-info" role="alert">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>PIN Reset Required</strong><br/>
+                            @pinResponse.Message
+                        </div>
+                    }
+
+                    <EditForm Model="@pinRequest" OnValidSubmit="@HandlePinSubmit">
+                        <DataAnnotationsValidator />
+                        
+                        <div class="mb-3">
+                            <label for="teacherPin" class="form-label">Teacher PIN</label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-key"></i>
+                                </span>
+                                <InputText 
+                                    id="teacherPin" 
+                                    class="@($"form-control {GetValidationClass()}")" 
+                                    @bind-Value="pinRequest.Pin" 
+                                    type="@(showPin ? "text" : "password")"
+                                    placeholder="Enter 6-digit PIN"
+                                    maxlength="6"
+                                    autocomplete="off"
+                                    @oninput="OnPinInput"
+                                    disabled="@isProcessing" />
+                                <button class="btn btn-outline-secondary" type="button" @onclick="ToggleShowPin">
+                                    <i class="fas @(showPin ? "fa-eye-slash" : "fa-eye")"></i>
+                                </button>
+                            </div>
+                            <ValidationMessage For="@(() => pinRequest.Pin)" />
+                            
+                            @if (validationResult != null && !validationResult.IsValid)
+                            {
+                                <div class="invalid-feedback d-block">
+                                    @foreach (var error in validationResult.ValidationErrors)
+                                    {
+                                        <div>@error</div>
+                                    }
+                                </div>
+                            }
+
+                            @if (pinResponse != null && !pinResponse.IsValid && !pinResponse.IsLocked && pinResponse.RemainingAttempts > 0)
+                            {
+                                <div class="text-warning mt-1">
+                                    <small>
+                                        <i class="fas fa-exclamation-triangle me-1"></i>
+                                        @pinResponse.RemainingAttempts attempt(s) remaining
+                                    </small>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" disabled="@(isProcessing || (pinResponse?.IsLocked == true))">
+                                @if (isProcessing)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                    <text>Validating...</text>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-sign-in-alt me-2"></i>
+                                    <text>Submit PIN</text>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+
+                    <hr class="my-4">
+
+                    <div class="text-center">
+                        <h6 class="text-muted mb-3">Demo Actions</h6>
+                        
+                        <div class="d-grid gap-2 d-md-block">
+                            <button class="btn btn-outline-info btn-sm" @onclick="CreateSampleTeacher" disabled="@isProcessing">
+                                <i class="fas fa-user-plus me-1"></i>
+                                Create Demo Teacher
+                            </button>
+                            
+                            @if (!string.IsNullOrEmpty(currentUserId))
+                            {
+                                <button class="btn btn-outline-warning btn-sm" @onclick="UnlockAccount" disabled="@isProcessing">
+                                    <i class="fas fa-unlock me-1"></i>
+                                    Unlock Account
+                                </button>
+                                
+                                <button class="btn btn-outline-secondary btn-sm" @onclick="ResetPin" disabled="@isProcessing">
+                                    <i class="fas fa-redo me-1"></i>
+                                    Reset PIN
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    @if (teacher != null)
+                    {
+                        <hr class="my-4">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Teacher Information</h6>
+                                <p class="card-text mb-2"><strong>Name:</strong> @teacher.Name</p>
+                                <p class="card-text mb-2"><strong>Email:</strong> @teacher.Email</p>
+                                <p class="card-text mb-2"><strong>Status:</strong> 
+                                    @if (teacher.IsActive)
+                                    {
+                                        <span class="badge bg-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Inactive</span>
+                                    }
+                                </p>
+                                <p class="card-text mb-2"><strong>PIN Expires:</strong> @teacher.PinExpiresAt.ToString("yyyy-MM-dd")</p>
+                                @if (teacher.IsLocked)
+                                {
+                                    <p class="card-text mb-0"><strong>Account Status:</strong> 
+                                        <span class="badge bg-warning">Locked</span>
+                                    </p>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .form-control[type="password"] {
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.2em;
+    }
+    
+    .input-group .btn {
+        border-left: none;
+    }
+    
+    .card {
+        border: none;
+        border-radius: 10px;
+    }
+    
+    .card-header {
+        border-radius: 10px 10px 0 0 !important;
+    }
+    
+    .alert {
+        border-radius: 8px;
+    }
+    
+    .btn {
+        border-radius: 6px;
+    }
+</style>
+
+@code {
+    private TeacherPinRequest pinRequest = new() { Pin = "" };
+    private TeacherPinResponse? pinResponse;
+    private TeacherPinValidationResult? validationResult;
+    private Teacher? teacher;
+    private string errorMessage = "";
+    private string successMessage = "";
+    private string currentUserId = "";
+    private bool isProcessing = false;
+    private bool showPin = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Initial setup - no focus needed for InputText
+        await Task.CompletedTask;
+    }
+
+    private async Task HandlePinSubmit()
+    {
+        try
+        {
+            isProcessing = true;
+            errorMessage = "";
+            successMessage = "";
+            StateHasChanged();
+
+            // Validate PIN format first
+            validationResult = await ApiService.ValidatePinFormatAsync(pinRequest);
+            
+            if (!validationResult.IsValid)
+            {
+                errorMessage = validationResult.Message;
+                return;
+            }
+
+            // Use demo teacher or specific user ID for validation
+            var userId = !string.IsNullOrEmpty(currentUserId) ? currentUserId : "demo-teacher";
+            
+            pinResponse = await ApiService.ValidatePinAsync(userId, pinRequest);
+            
+            if (pinResponse.IsValid)
+            {
+                successMessage = pinResponse.Message;
+                // In a real application, redirect to teacher dashboard
+                await Task.Delay(2000);
+                await JSRuntime.InvokeVoidAsync("alert", "Redirecting to Teacher Dashboard...");
+            }
+            else if (pinResponse.IsLocked)
+            {
+                errorMessage = pinResponse.Message;
+            }
+            else if (pinResponse.RequiresReset)
+            {
+                errorMessage = pinResponse.Message;
+            }
+            else
+            {
+                errorMessage = pinResponse.Message;
+            }
+            
+            // Clear PIN field for security after failed attempt
+            if (!pinResponse.IsValid)
+            {
+                pinRequest.Pin = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error validating PIN");
+            errorMessage = "An error occurred while validating the PIN. Please try again.";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnPinInput(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        pinRequest.Pin = value;
+        
+        // Real-time format validation
+        if (!string.IsNullOrEmpty(value))
+        {
+            try
+            {
+                validationResult = await ApiService.ValidatePinFormatAsync(new TeacherPinRequest { Pin = value });
+            }
+            catch
+            {
+                // Ignore validation errors during typing
+            }
+        }
+        else
+        {
+            validationResult = null;
+        }
+        
+        StateHasChanged();
+    }
+
+    private void ToggleShowPin()
+    {
+        showPin = !showPin;
+    }
+
+    private string GetValidationClass()
+    {
+        if (validationResult == null) return "";
+        return validationResult.IsValid ? "is-valid" : "is-invalid";
+    }
+
+    private async Task CreateSampleTeacher()
+    {
+        try
+        {
+            isProcessing = true;
+            errorMessage = "";
+            successMessage = "";
+            StateHasChanged();
+
+            teacher = await ApiService.CreateSampleTeacherAsync();
+            currentUserId = teacher.UserId;
+            successMessage = "Demo teacher created successfully! PIN: 123456";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating sample teacher");
+            errorMessage = "Failed to create demo teacher. It may already exist.";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnlockAccount()
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        try
+        {
+            isProcessing = true;
+            errorMessage = "";
+            successMessage = "";
+            StateHasChanged();
+
+            var success = await ApiService.UnlockAccountAsync(currentUserId);
+            
+            if (success)
+            {
+                successMessage = "Account unlocked successfully!";
+                pinResponse = null; // Clear previous response
+                
+                // Refresh teacher info
+                await RefreshTeacherInfo();
+            }
+            else
+            {
+                errorMessage = "Failed to unlock account.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error unlocking account");
+            errorMessage = "An error occurred while unlocking the account.";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetPin()
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        try
+        {
+            isProcessing = true;
+            errorMessage = "";
+            successMessage = "";
+            StateHasChanged();
+
+            // Reset to demo PIN
+            var success = await ApiService.ResetPinAsync(currentUserId, new TeacherPinRequest { Pin = "123456" });
+            
+            if (success)
+            {
+                successMessage = "PIN reset successfully to 123456!";
+                pinResponse = null; // Clear previous response
+                
+                // Refresh teacher info
+                await RefreshTeacherInfo();
+            }
+            else
+            {
+                errorMessage = "Failed to reset PIN.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error resetting PIN");
+            errorMessage = "An error occurred while resetting the PIN.";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshTeacherInfo()
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        try
+        {
+            teacher = await ApiService.GetTeacherAsync(currentUserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing teacher info");
+        }
+    }
+}

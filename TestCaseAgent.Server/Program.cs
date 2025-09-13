@@ -62,7 +62,8 @@ builder.Services.AddScoped<IGoogleDocsService, GoogleDocsService>();
 builder.Services.AddScoped<IGoogleSheetsService, GoogleSheetsService>();
 builder.Services.AddScoped<IIntelligentAgentService, IntelligentAgentService>();
 builder.Services.AddSingleton<IDocumentService, DocumentService>(); // Changed to Singleton for in-memory demo storage
-builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddSingleton<IAuditService, AuditService>(); // Changed to Singleton for in-memory demo storage
+builder.Services.AddSingleton<ITeacherPinService, TeacherPinService>(); // Changed to Singleton for in-memory demo storage
 
 var app = builder.Build();
 

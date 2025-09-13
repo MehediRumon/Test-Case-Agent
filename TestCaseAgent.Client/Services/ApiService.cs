@@ -13,6 +13,15 @@ public interface IApiService
     Task<List<TestCase>> GenerateTestCasesAsync(TestCaseGenerationRequest request);
     Task<TestCase> CreateTestCaseAsync(CreateTestCaseRequest request);
     Task<List<AuditLog>> GetAuditLogsAsync();
+    
+    // Teacher PIN methods
+    Task<Teacher> RegisterTeacherAsync(TeacherRegistrationRequest request);
+    Task<TeacherPinResponse> ValidatePinAsync(string userId, TeacherPinRequest request);
+    Task<TeacherPinValidationResult> ValidatePinFormatAsync(TeacherPinRequest request);
+    Task<Teacher> GetTeacherAsync(string userId);
+    Task<bool> ResetPinAsync(string userId, TeacherPinRequest request);
+    Task<bool> UnlockAccountAsync(string userId);
+    Task<Teacher> CreateSampleTeacherAsync();
 }
 
 public class ApiService : IApiService
@@ -147,6 +156,112 @@ public class ApiService : IApiService
         {
             _logger.LogError(ex, "Error fetching audit logs");
             return new List<AuditLog>();
+        }
+    }
+
+    // Teacher PIN implementations
+    public async Task<Teacher> RegisterTeacherAsync(TeacherRegistrationRequest request)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync("api/teacher/register", request);
+            response.EnsureSuccessStatusCode();
+            
+            var result = await response.Content.ReadFromJsonAsync<Teacher>();
+            return result ?? throw new InvalidOperationException("Failed to parse response");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error registering teacher");
+            throw;
+        }
+    }
+
+    public async Task<TeacherPinResponse> ValidatePinAsync(string userId, TeacherPinRequest request)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync($"api/teacher/validate-pin?userId={userId}", request);
+            
+            var result = await response.Content.ReadFromJsonAsync<TeacherPinResponse>();
+            return result ?? throw new InvalidOperationException("Failed to parse response");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating PIN");
+            throw;
+        }
+    }
+
+    public async Task<TeacherPinValidationResult> ValidatePinFormatAsync(TeacherPinRequest request)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync("api/teacher/validate-pin-format", request);
+            
+            var result = await response.Content.ReadFromJsonAsync<TeacherPinValidationResult>();
+            return result ?? throw new InvalidOperationException("Failed to parse response");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating PIN format");
+            throw;
+        }
+    }
+
+    public async Task<Teacher> GetTeacherAsync(string userId)
+    {
+        try
+        {
+            var response = await _httpClient.GetFromJsonAsync<Teacher>($"api/teacher/{userId}");
+            return response ?? throw new InvalidOperationException("Teacher not found");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching teacher");
+            throw;
+        }
+    }
+
+    public async Task<bool> ResetPinAsync(string userId, TeacherPinRequest request)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync($"api/teacher/{userId}/reset-pin", request);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting PIN");
+            return false;
+        }
+    }
+
+    public async Task<bool> UnlockAccountAsync(string userId)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsync($"api/teacher/{userId}/unlock", null);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error unlocking account");
+            return false;
+        }
+    }
+
+    public async Task<Teacher> CreateSampleTeacherAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetFromJsonAsync<Teacher>("api/teacher/demo/create-sample");
+            return response ?? throw new InvalidOperationException("Failed to create sample teacher");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating sample teacher");
+            throw;
         }
     }
 }

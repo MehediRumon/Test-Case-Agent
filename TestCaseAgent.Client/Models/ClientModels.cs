@@ -91,3 +91,47 @@ public class AuditLog
     public DateTime Timestamp { get; set; }
     public string? DocumentId { get; set; }
 }
+
+// Teacher PIN related models
+public class Teacher
+{
+    public int Id { get; set; }
+    public required string UserId { get; set; }
+    public required string Name { get; set; }
+    public required string Email { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime PinExpiresAt { get; set; }
+    public int FailedAttempts { get; set; }
+    public bool IsLocked { get; set; }
+    public DateTime? LockedUntil { get; set; }
+}
+
+public class TeacherPinRequest
+{
+    public required string Pin { get; set; }
+}
+
+public class TeacherPinResponse
+{
+    public bool IsValid { get; set; }
+    public string Message { get; set; } = "";
+    public bool IsLocked { get; set; }
+    public DateTime? LockedUntil { get; set; }
+    public int RemainingAttempts { get; set; }
+    public bool RequiresReset { get; set; }
+}
+
+public class TeacherRegistrationRequest
+{
+    public required string Name { get; set; }
+    public required string Email { get; set; }
+    public required string Pin { get; set; }
+}
+
+public class TeacherPinValidationResult
+{
+    public bool IsValid { get; set; }
+    public string Message { get; set; } = "";
+    public List<string> ValidationErrors { get; set; } = new();
+}
