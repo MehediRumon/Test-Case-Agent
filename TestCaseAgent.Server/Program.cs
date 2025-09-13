@@ -61,7 +61,7 @@ builder.Services.AddHttpClient<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IGoogleDocsService, GoogleDocsService>();
 builder.Services.AddScoped<IGoogleSheetsService, GoogleSheetsService>();
 builder.Services.AddScoped<IIntelligentAgentService, IntelligentAgentService>();
-builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddSingleton<IDocumentService, DocumentService>(); // Changed to Singleton for in-memory demo storage
 builder.Services.AddScoped<IAuditService, AuditService>();
 
 var app = builder.Build();
