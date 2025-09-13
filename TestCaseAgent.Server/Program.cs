@@ -73,7 +73,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Only use HTTPS redirection in production or when HTTPS is properly configured
+if (!app.Environment.IsDevelopment() || 
+    app.Configuration.GetSection("Kestrel:Endpoints:Https").Exists() ||
+    !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_HTTPS_PORT")))
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseCors();
 
 app.UseAuthentication();
