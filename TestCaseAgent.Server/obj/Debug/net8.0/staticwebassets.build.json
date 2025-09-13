@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "taDoQzE6oiT28ER/C0bsWccA8u9ZFohMW1xyoJWifgM=",
+  "Source": "TestCaseAgent.Server",
+  "BasePath": "_content/TestCaseAgent.Server",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}

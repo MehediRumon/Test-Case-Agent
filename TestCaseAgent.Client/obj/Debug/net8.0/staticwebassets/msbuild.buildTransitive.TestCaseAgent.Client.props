@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="../buildMultiTargeting/TestCaseAgent.Client.props" />
+</Project>

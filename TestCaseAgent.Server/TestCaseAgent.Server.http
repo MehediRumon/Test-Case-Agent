@@ -1,0 +1,6 @@
+@TestCaseAgent.Server_HostAddress = http://localhost:5204
+
+GET {{TestCaseAgent.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
