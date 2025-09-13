@@ -14,10 +14,12 @@ public interface IIntelligentAgentService
 public class IntelligentAgentService : IIntelligentAgentService
 {
     private readonly ILogger<IntelligentAgentService> _logger;
+    private readonly IOpenAIService _openAIService;
 
-    public IntelligentAgentService(ILogger<IntelligentAgentService> logger)
+    public IntelligentAgentService(ILogger<IntelligentAgentService> logger, IOpenAIService openAIService)
     {
         _logger = logger;
+        _openAIService = openAIService;
     }
 
     public async Task<AgentResponse> AnswerQuestionAsync(string question, string frsContent)
@@ -26,20 +28,16 @@ public class IntelligentAgentService : IIntelligentAgentService
         {
             _logger.LogInformation("Processing question: {Question}", question);
 
-            // Basic question answering logic based on FRS content
-            var answer = await ProcessQuestionAgainstFRS(question, frsContent);
-            var references = ExtractRelevantSections(question, frsContent);
-
-            return new AgentResponse
-            {
-                Answer = answer,
-                References = references
-            };
+            // Use OpenAI service for intelligent responses
+            return await _openAIService.AnswerQuestionAsync(question, frsContent);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing question: {Question}", question);
-            throw;
+            
+            // Fallback to basic processing if OpenAI fails
+            _logger.LogWarning("Falling back to basic question processing");
+            return await ProcessQuestionBasic(question, frsContent);
         }
     }
 
@@ -49,29 +47,16 @@ public class IntelligentAgentService : IIntelligentAgentService
         {
             _logger.LogInformation("Generating test cases for requirement: {RequirementId}", requirementId);
 
-            var testCases = new List<TestCase>();
-
-            // Generate positive test cases
-            var positiveCase = await GeneratePositiveTestCase(requirementText, requirementId, userId);
-            testCases.Add(positiveCase);
-
-            // Generate negative test cases
-            var negativeCase = await GenerateNegativeTestCase(requirementText, requirementId, userId);
-            testCases.Add(negativeCase);
-
-            // Generate boundary test cases if applicable
-            if (ContainsBoundaryConditions(requirementText))
-            {
-                var boundaryCase = await GenerateBoundaryTestCase(requirementText, requirementId, userId);
-                testCases.Add(boundaryCase);
-            }
-
-            return testCases;
+            // Use OpenAI service for intelligent test case generation
+            return await _openAIService.GenerateTestCasesAsync(requirementText, requirementId, userId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating test cases for requirement: {RequirementId}", requirementId);
-            throw;
+            
+            // Fallback to basic generation if OpenAI fails
+            _logger.LogWarning("Falling back to basic test case generation");
+            return await GenerateTestCasesBasic(requirementText, requirementId, userId);
         }
     }
 
@@ -81,16 +66,59 @@ public class IntelligentAgentService : IIntelligentAgentService
         {
             _logger.LogInformation("Generating test case from prompt: {Prompt}", prompt);
 
-            var relevantContent = ExtractRelevantContent(prompt, frsContent);
-            var testCase = await CreateTestCaseFromContent(prompt, relevantContent, userId);
-
-            return testCase;
+            // Use OpenAI service for intelligent test case generation
+            return await _openAIService.GenerateTestCaseFromPromptAsync(prompt, frsContent, userId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating test case from prompt: {Prompt}", prompt);
-            throw;
+            
+            // Fallback to basic generation if OpenAI fails
+            _logger.LogWarning("Falling back to basic test case generation from prompt");
+            return await CreateTestCaseFromContentBasic(prompt, frsContent, userId);
         }
+    }
+
+    // Fallback methods for when OpenAI is not available
+    private async Task<AgentResponse> ProcessQuestionBasic(string question, string frsContent)
+    {
+        // Basic question answering logic based on FRS content
+        var answer = await ProcessQuestionAgainstFRS(question, frsContent);
+        var references = ExtractRelevantSections(question, frsContent);
+
+        return new AgentResponse
+        {
+            Answer = answer,
+            References = references
+        };
+    }
+
+    private async Task<List<TestCase>> GenerateTestCasesBasic(string requirementText, string requirementId, string userId)
+    {
+        var testCases = new List<TestCase>();
+
+        // Generate positive test cases
+        var positiveCase = await GeneratePositiveTestCase(requirementText, requirementId, userId);
+        testCases.Add(positiveCase);
+
+        // Generate negative test cases
+        var negativeCase = await GenerateNegativeTestCase(requirementText, requirementId, userId);
+        testCases.Add(negativeCase);
+
+        // Generate boundary test cases if applicable
+        if (ContainsBoundaryConditions(requirementText))
+        {
+            var boundaryCase = await GenerateBoundaryTestCase(requirementText, requirementId, userId);
+            testCases.Add(boundaryCase);
+        }
+
+        return testCases;
+    }
+
+    private async Task<TestCase> CreateTestCaseFromContentBasic(string prompt, string frsContent, string userId)
+    {
+        var relevantContent = ExtractRelevantContent(prompt, frsContent);
+        return await CreateTestCaseFromContent(prompt, relevantContent, userId);
     }
 
     private async Task<string> ProcessQuestionAgainstFRS(string question, string frsContent)
