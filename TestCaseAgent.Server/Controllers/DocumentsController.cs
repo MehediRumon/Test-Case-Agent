@@ -54,7 +54,7 @@ public class DocumentsController : ControllerBase
             // In production, proper OAuth flow should be implemented
             if (string.IsNullOrEmpty(accessToken) || accessToken == "Bearer" || accessToken == "")
             {
-                _logger.LogWarning("No valid access token found, skipping Google API validation");
+                _logger.LogInformation("Running in demo mode without Google API access token, using provided document title");
                 request.DocumentTitle = request.DocumentTitle ?? $"Document {request.DocumentId}";
             }
             else
