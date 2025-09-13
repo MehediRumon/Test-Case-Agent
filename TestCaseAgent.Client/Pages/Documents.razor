@@ -1,0 +1,218 @@
+﻿@page "/documents"
+@using TestCaseAgent.Client.Models
+@using TestCaseAgent.Client.Services
+@inject IApiService ApiService
+@inject ILogger<Documents> Logger
+
+<PageTitle>Document Management</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1>Document Management</h1>
+            <p>Link your Google Docs (FRS) and Google Sheets (Test Cases) to enable the intelligent agent.</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Link New Document</h5>
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="linkRequest" OnSubmit="LinkDocument">
+                            <div class="mb-3">
+                                <label class="form-label">Document Type</label>
+                                <InputSelect @bind-Value="linkRequest.Type" class="form-select">
+                                    <option value="@DocumentType.FunctionalRequirementSpec">Functional Requirement Specification (Google Doc)</option>
+                                    <option value="@DocumentType.TestCaseSheet">Test Case Sheet (Google Sheets)</option>
+                                </InputSelect>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Document URL</label>
+                                <InputText @bind-Value="linkRequest.DocumentUrl" class="form-control" placeholder="https://docs.google.com/..." />
+                                <div class="form-text">Paste the full Google Docs or Google Sheets URL</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Document ID (extracted from URL)</label>
+                                <InputText @bind-Value="linkRequest.DocumentId" class="form-control" readonly />
+                            </div>
+                            <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                                @if (isSubmitting)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                }
+                                Link Document
+                            </button>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Linked Documents</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (!documents.Any())
+                        {
+                            <p class="text-muted">No documents linked yet.</p>
+                        }
+                        else
+                        {
+                            @foreach (var doc in documents)
+                            {
+                                <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                                    <div>
+                                        <strong>@doc.DocumentTitle</strong>
+                                        <br>
+                                        <small class="text-muted">@doc.Type</small>
+                                        <br>
+                                        <small class="text-muted">Linked: @doc.CreatedAt.ToString("yyyy-MM-dd HH:mm")</small>
+                                    </div>
+                                    <div>
+                                        <a href="@doc.DocumentUrl" target="_blank" class="btn btn-sm btn-outline-primary me-2">
+                                            <i class="bi bi-box-arrow-up-right"></i> Open
+                                        </a>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => UnlinkDocument(doc.Id)">
+                                            <i class="bi bi-trash"></i> Unlink
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger mt-3" role="alert">
+                @errorMessage
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success mt-3" role="alert">
+                @successMessage
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool isSubmitting = false;
+    private List<DocumentLink> documents = new();
+    private LinkDocumentRequest linkRequest = new() { DocumentId = "", DocumentUrl = "" };
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDocuments();
+    }
+
+    private async Task LoadDocuments()
+    {
+        try
+        {
+            isLoading = true;
+            documents = await ApiService.GetDocumentsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading documents");
+            errorMessage = "Failed to load documents";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LinkDocument()
+    {
+        try
+        {
+            isSubmitting = true;
+            errorMessage = "";
+            successMessage = "";
+
+            // Extract document ID from URL
+            linkRequest.DocumentId = ExtractDocumentId(linkRequest.DocumentUrl);
+            
+            if (string.IsNullOrEmpty(linkRequest.DocumentId))
+            {
+                errorMessage = "Invalid document URL. Please provide a valid Google Docs or Google Sheets URL.";
+                return;
+            }
+
+            var linkedDocument = await ApiService.LinkDocumentAsync(linkRequest);
+            
+            successMessage = $"Successfully linked document: {linkedDocument.DocumentTitle}";
+            
+            // Reset form and reload documents
+            linkRequest = new() { DocumentId = "", DocumentUrl = "" };
+            await LoadDocuments();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error linking document");
+            errorMessage = $"Failed to link document: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task UnlinkDocument(int documentId)
+    {
+        try
+        {
+            var success = await ApiService.UnlinkDocumentAsync(documentId);
+            
+            if (success)
+            {
+                successMessage = "Document unlinked successfully";
+                await LoadDocuments();
+            }
+            else
+            {
+                errorMessage = "Failed to unlink document";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error unlinking document");
+            errorMessage = $"Failed to unlink document: {ex.Message}";
+        }
+    }
+
+    private string ExtractDocumentId(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return "";
+
+        // Google Docs URL pattern: https://docs.google.com/document/d/{document_id}/...
+        // Google Sheets URL pattern: https://docs.google.com/spreadsheets/d/{document_id}/...
+        var docMatch = System.Text.RegularExpressions.Regex.Match(url, @"/d/([a-zA-Z0-9-_]+)");
+        
+        return docMatch.Success ? docMatch.Groups[1].Value : "";
+    }
+}

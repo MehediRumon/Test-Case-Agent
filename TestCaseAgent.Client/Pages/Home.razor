@@ -1,0 +1,159 @@
+﻿@page "/"
+@using TestCaseAgent.Client.Models
+@using TestCaseAgent.Client.Services
+@inject IApiService ApiService
+@inject ILogger<Home> Logger
+
+<PageTitle>Test Case Agent - Dashboard</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="display-4">Test Case Agent Dashboard</h1>
+            <p class="lead">Intelligent test case generation using Google Docs FRS and Google Sheets</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row mt-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-file-earmark-text"></i> FRS Document
+                        </h5>
+                        @if (agentStatus.HasFRSDocument)
+                        {
+                            <p class="card-text text-success">
+                                <i class="bi bi-check-circle"></i> Connected: @agentStatus.FRSDocumentTitle
+                            </p>
+                        }
+                        else
+                        {
+                            <p class="card-text text-warning">
+                                <i class="bi bi-exclamation-triangle"></i> No FRS document linked
+                            </p>
+                            <a href="/documents" class="btn btn-primary">Link Document</a>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-table"></i> Test Case Sheet
+                        </h5>
+                        @if (agentStatus.HasTestCaseSheet)
+                        {
+                            <p class="card-text text-success">
+                                <i class="bi bi-check-circle"></i> Connected: @agentStatus.TestCaseSheetTitle
+                            </p>
+                        }
+                        else
+                        {
+                            <p class="card-text text-warning">
+                                <i class="bi bi-exclamation-triangle"></i> No test case sheet linked
+                            </p>
+                            <a href="/documents" class="btn btn-primary">Link Sheet</a>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-robot"></i> Agent Status
+                        </h5>
+                        @if (agentStatus.IsReady)
+                        {
+                            <p class="card-text text-success">
+                                <i class="bi bi-check-circle"></i> Ready for operation
+                            </p>
+                            <a href="/chat" class="btn btn-success">Start Chat</a>
+                        }
+                        else
+                        {
+                            <p class="card-text text-danger">
+                                <i class="bi bi-x-circle"></i> Setup required
+                            </p>
+                            <p class="small">Link both FRS and Test Case documents to activate the agent.</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (agentStatus.IsReady)
+        {
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Quick Actions</h5>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <a href="/chat" class="btn btn-outline-primary w-100 mb-2">
+                                        <i class="bi bi-chat-dots"></i><br>
+                                        Ask Questions
+                                    </a>
+                                </div>
+                                <div class="col-md-3">
+                                    <a href="/testcases" class="btn btn-outline-success w-100 mb-2">
+                                        <i class="bi bi-plus-circle"></i><br>
+                                        Generate Test Cases
+                                    </a>
+                                </div>
+                                <div class="col-md-3">
+                                    <a href="/documents" class="btn btn-outline-info w-100 mb-2">
+                                        <i class="bi bi-gear"></i><br>
+                                        Manage Documents
+                                    </a>
+                                </div>
+                                <div class="col-md-3">
+                                    <a href="/audit" class="btn btn-outline-secondary w-100 mb-2">
+                                        <i class="bi bi-journal-text"></i><br>
+                                        View Audit Logs
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private AgentStatus agentStatus = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            agentStatus = await ApiService.GetAgentStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading dashboard");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

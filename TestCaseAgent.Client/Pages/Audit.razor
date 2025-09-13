@@ -1,0 +1,187 @@
+﻿@page "/audit"
+@using TestCaseAgent.Client.Models
+@using TestCaseAgent.Client.Services
+@inject IApiService ApiService
+@inject ILogger<Audit> Logger
+
+<PageTitle>Audit Logs</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1>Audit Logs</h1>
+            <p>Track all actions performed by the intelligent agent and user interactions.</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Audit Trail</h5>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="RefreshLogs">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        @if (!auditLogs.Any())
+                        {
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-journal-text display-1"></i>
+                                <p class="mt-3">No audit logs found.</p>
+                                <p class="small">Logs will appear here as you use the application.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>Action</th>
+                                            <th>Details</th>
+                                            <th>Document</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var log in auditLogs.OrderByDescending(l => l.Timestamp))
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <span class="text-nowrap">@log.Timestamp.ToString("yyyy-MM-dd")</span><br>
+                                                    <small class="text-muted">@log.Timestamp.ToString("HH:mm:ss")</small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-@GetActionColor(log.Action)">
+                                                        @log.Action
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div style="max-width: 400px; word-wrap: break-word;">
+                                                        @if (log.Details.Length > 100)
+                                                        {
+                                                            <span>@log.Details.Substring(0, 100)...</span>
+                                                            <button class="btn btn-link btn-sm p-0" @onclick="() => ToggleDetails(log.Id)">
+                                                                @(expandedLogs.Contains(log.Id) ? "Show Less" : "Show More")
+                                                            </button>
+                                                            @if (expandedLogs.Contains(log.Id))
+                                                            {
+                                                                <div class="mt-2 text-muted small">
+                                                                    @log.Details
+                                                                </div>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            @log.Details
+                                                        }
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(log.DocumentId))
+                                                    {
+                                                        <small class="text-muted font-monospace">@log.DocumentId</small>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">-</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="mt-3">
+                                <small class="text-muted">
+                                    Showing @auditLogs.Count audit log entries. 
+                                    Last updated: @DateTime.Now.ToString("HH:mm:ss")
+                                </small>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger mt-3" role="alert">
+                @errorMessage
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private List<AuditLog> auditLogs = new();
+    private HashSet<int> expandedLogs = new();
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAuditLogs();
+    }
+
+    private async Task LoadAuditLogs()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = "";
+            auditLogs = await ApiService.GetAuditLogsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading audit logs");
+            errorMessage = "Failed to load audit logs. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshLogs()
+    {
+        await LoadAuditLogs();
+    }
+
+    private void ToggleDetails(int logId)
+    {
+        if (expandedLogs.Contains(logId))
+        {
+            expandedLogs.Remove(logId);
+        }
+        else
+        {
+            expandedLogs.Add(logId);
+        }
+    }
+
+    private string GetActionColor(string action)
+    {
+        return action switch
+        {
+            "Document Linked" => "success",
+            "Document Unlinked" => "warning",
+            "Question Asked" => "info",
+            "Test Cases Generated" => "primary",
+            "Custom Test Case Created" => "secondary",
+            _ => "dark"
+        };
+    }
+}
