@@ -30,6 +30,15 @@ An intelligent test case generation system that integrates with Google Docs (Fun
    - Google Sheets API
 4. **Google OAuth 2.0 credentials** (Client ID and Client Secret)
 
+## Important: Authorized Redirect URIs Configuration
+
+When setting up Google OAuth 2.0 credentials, you **must** configure the following authorized redirect URIs in your Google Cloud Console:
+
+- `https://localhost:7000/auth/callback` (for HTTPS/production-like testing)
+- `http://localhost:5000/auth/callback` (for HTTP/development testing)
+
+These URIs correspond to the authentication callback endpoints that Google will redirect users to after successful authentication. The application is configured to run the API server on ports 7000 (HTTPS) and 5000 (HTTP).
+
 ## Setup Instructions
 
 ### 1. Google Cloud Configuration
@@ -45,6 +54,7 @@ An intelligent test case generation system that integrates with Google Docs (Fun
    - Add authorized redirect URIs:
      - `https://localhost:7000/auth/callback`
      - `http://localhost:5000/auth/callback`
+   - **📋 For detailed OAuth setup instructions, see [OAUTH_SETUP.md](OAUTH_SETUP.md)**
 5. Note down the Client ID and Client Secret
 
 ### 2. Application Configuration
