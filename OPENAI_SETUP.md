@@ -6,7 +6,10 @@ This guide will help you properly configure the OpenAI API key for the Test Case
 
 1. **OpenAI Account**: You need an active OpenAI account
 2. **API Key**: You need a valid OpenAI API key with sufficient credits
-3. **Valid Format**: OpenAI API keys start with `sk-` and are typically 51 characters long
+3. **Valid Format**: OpenAI API keys can have different formats:
+   - **Traditional keys**: Start with `sk-` (e.g., `sk-1234567890abcdef...`)
+   - **Project-scoped keys**: Start with `sk-proj-` (e.g., `sk-proj-1234567890abcdef...`)
+   - Both types are typically 51-120 characters long
 
 ## Getting Your OpenAI API Key
 
@@ -58,6 +61,25 @@ cd TestCaseAgent.Server
 dotnet user-secrets set "OpenAI:ApiKey" "sk-your-actual-openai-api-key-here"
 ```
 
+## Understanding OpenAI API Key Types
+
+### Traditional API Keys (`sk-`)
+- Format: `sk-1234567890abcdef...`
+- Account-level access
+- Access to all models available to your account
+- Simpler permission model
+
+### Project-Scoped API Keys (`sk-proj-`)
+- Format: `sk-proj-1234567890abcdef...`
+- Limited to specific OpenAI projects
+- More granular access control
+- Recommended for production applications
+
+**Important for Project-Scoped Keys:**
+- Ensure your project has access to the model specified in configuration (`gpt-4o-mini` by default)
+- Check project status and permissions at https://platform.openai.com/settings/organization/projects
+- Verify project billing and usage limits
+
 ## Configuration Validation
 
 The application now includes automatic configuration validation that will:
@@ -75,7 +97,7 @@ The application now includes automatic configuration validation that will:
 ```
 OpenAI API error: Unauthorized - {
     "error": {
-        "message": "Incorrect API key provided: your-ope************here",
+        "message": "Incorrect API key provided: sk-proj-************************************************************LgwA",
         "type": "invalid_request_error",
         "param": null,
         "code": "invalid_api_key"
@@ -85,9 +107,14 @@ OpenAI API error: Unauthorized - {
 
 **Solutions:**
 1. **Check if you're using a placeholder**: Look for values like `your-openai-api-key-here`
-2. **Verify the key format**: Should start with `sk-` and be ~51 characters
+2. **Verify the key format**: Should start with `sk-` or `sk-proj-` and be 51-120 characters
 3. **Check for typos**: Ensure no extra spaces or characters
-4. **Verify the key is active**: Test it at https://platform.openai.com/playground
+4. **Verify the key is active**: Visit https://platform.openai.com/account/api-keys and check status
+5. **For project-scoped keys (`sk-proj-`)**:
+   - Ensure your project has access to the model you're using (default: `gpt-4o-mini`)
+   - Check project permissions and settings
+   - Verify project isn't suspended or restricted
+6. **Test your key directly**: Use the OpenAI Playground or API directly
 
 ### Issue: Configuration Not Loading
 
@@ -132,7 +159,8 @@ After configuring your API key, you can test it by:
    ```
 
 2. **Check the startup logs** for configuration validation messages:
-   - ✅ `OpenAI API key configuration looks valid`
+   - ✅ `OpenAI API key configuration looks valid: sk-***LgwA`
+   - ✅ `Detected project-scoped API key` (for sk-proj- keys)
    - ⚠️ `OpenAI API key appears to be a placeholder value`
 
 3. **Test the AI chat feature** through the web interface

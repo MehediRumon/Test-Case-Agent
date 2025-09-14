@@ -76,14 +76,15 @@ Valid OpenAI API keys start with 'sk-' followed by a long string of characters."
             return;
         }
 
-        // Check basic format
-        if (!apiKey.StartsWith("sk-") || apiKey.Length < 20)
+        // Check basic format - support both traditional and project-scoped API keys
+        var validPrefixes = new[] { "sk-", "sk-proj-" };
+        if (!validPrefixes.Any(prefix => apiKey.StartsWith(prefix)) || apiKey.Length < 20)
         {
             _logger.LogWarning(@"⚠️  OpenAI API key format appears invalid: {ApiKey}
 
 Valid OpenAI API keys:
-- Start with 'sk-'
-- Are typically 51 characters long
+- Start with 'sk-' (traditional) or 'sk-proj-' (project-scoped)
+- Are typically 51-120 characters long
 - Contain only alphanumeric characters and hyphens
 
 Please verify your API key from: https://platform.openai.com/account/api-keys", MaskApiKey(apiKey));
