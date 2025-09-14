@@ -26,20 +26,25 @@ public class OpenAIService : IOpenAIService
         _httpClient = httpClient;
         _logger = logger;
         
-        // Try multiple configuration sources for API key
+        // Get API key from configuration without failing constructor
         _apiKey = GetApiKeyFromConfiguration(configuration);
-        
-        // Validate API key is properly configured
-        ValidateApiKey(_apiKey);
 
         _model = configuration["OpenAI:Model"] ?? "gpt-4o-mini";
         _maxTokens = int.Parse(configuration["OpenAI:MaxTokens"] ?? "2000");
         _temperature = float.Parse(configuration["OpenAI:Temperature"] ?? "0.7");
 
         _httpClient.BaseAddress = new Uri("https://api.openai.com/");
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
         
-        _logger.LogInformation("OpenAI service initialized with model: {Model}", _model);
+        // Only set authorization header if we have a valid key
+        if (!string.IsNullOrEmpty(_apiKey) && IsValidApiKeyFormat(_apiKey))
+        {
+            _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+            _logger.LogInformation("OpenAI service initialized with model: {Model}", _model);
+        }
+        else
+        {
+            _logger.LogWarning("OpenAI service initialized without valid API key - will fallback to basic processing");
+        }
     }
     
     private string GetApiKeyFromConfiguration(IConfiguration configuration)
@@ -54,11 +59,32 @@ public class OpenAIService : IOpenAIService
         return apiKey;
     }
     
-    private void ValidateApiKey(string apiKey)
+    private bool IsValidApiKeyFormat(string apiKey)
     {
         if (string.IsNullOrEmpty(apiKey))
+            return false;
+            
+        // Check for placeholder values
+        var placeholderValues = new[] { "your-openai-api-key", "your-openai-api-key-here", "sk-your-key-here" };
+        if (placeholderValues.Any(placeholder => apiKey.Contains(placeholder, StringComparison.OrdinalIgnoreCase)))
+            return false;
+            
+        // Check basic format
+        return apiKey.StartsWith("sk-") && apiKey.Length >= 20;
+    }
+    
+    private void ThrowConfigurationError()
+    {
+        var errorMessage = GetDetailedConfigurationError();
+        _logger.LogError("OpenAI API key validation failed: {Error}", errorMessage);
+        throw new InvalidOperationException(errorMessage);
+    }
+    
+    private string GetDetailedConfigurationError()
+    {
+        if (string.IsNullOrEmpty(_apiKey))
         {
-            var errorMessage = @"OpenAI API key is not configured. Please configure it using one of these methods:
+            return @"OpenAI API key is not configured. Please configure it using one of these methods:
 
 1. Add to appsettings.json:
    ""OpenAI"": {
@@ -72,29 +98,23 @@ public class OpenAIService : IOpenAIService
    dotnet user-secrets set ""OpenAI:ApiKey"" ""sk-your-actual-openai-api-key-here""
 
 Get your API key from: https://platform.openai.com/account/api-keys";
-
-            _logger.LogError("OpenAI API key validation failed: {Error}", errorMessage);
-            throw new InvalidOperationException(errorMessage);
         }
         
         // Check for placeholder values
         var placeholderValues = new[] { "your-openai-api-key", "your-openai-api-key-here", "sk-your-key-here" };
-        if (placeholderValues.Any(placeholder => apiKey.Contains(placeholder, StringComparison.OrdinalIgnoreCase)))
+        if (placeholderValues.Any(placeholder => _apiKey.Contains(placeholder, StringComparison.OrdinalIgnoreCase)))
         {
-            var errorMessage = $@"OpenAI API key appears to be a placeholder value: {MaskApiKey(apiKey)}
+            return $@"OpenAI API key appears to be a placeholder value: {MaskApiKey(_apiKey)}
 
 Please replace it with your actual OpenAI API key from: https://platform.openai.com/account/api-keys
 
 Valid OpenAI API keys start with 'sk-' followed by a long string of characters.";
-
-            _logger.LogError("OpenAI API key validation failed - placeholder detected: {MaskedKey}", MaskApiKey(apiKey));
-            throw new InvalidOperationException(errorMessage);
         }
         
         // Check basic format
-        if (!apiKey.StartsWith("sk-") || apiKey.Length < 20)
+        if (!_apiKey.StartsWith("sk-") || _apiKey.Length < 20)
         {
-            var errorMessage = $@"OpenAI API key format appears invalid: {MaskApiKey(apiKey)}
+            return $@"OpenAI API key format appears invalid: {MaskApiKey(_apiKey)}
 
 Valid OpenAI API keys:
 - Start with 'sk-'
@@ -102,12 +122,9 @@ Valid OpenAI API keys:
 - Contain only alphanumeric characters and hyphens
 
 Please verify your API key from: https://platform.openai.com/account/api-keys";
-
-            _logger.LogError("OpenAI API key validation failed - invalid format: {MaskedKey}", MaskApiKey(apiKey));
-            throw new InvalidOperationException(errorMessage);
         }
         
-        _logger.LogInformation("OpenAI API key validation passed: {MaskedKey}", MaskApiKey(apiKey));
+        return $"OpenAI API key validation failed: {MaskApiKey(_apiKey)}";
     }
     
     private string MaskApiKey(string apiKey)
@@ -125,6 +142,12 @@ Please verify your API key from: https://platform.openai.com/account/api-keys";
     {
         try
         {
+            // Validate API key before making request
+            if (!IsValidApiKeyFormat(_apiKey))
+            {
+                ThrowConfigurationError();
+            }
+
             var systemMessage = !string.IsNullOrEmpty(context) 
                 ? $"You are a helpful assistant with expertise in software testing and requirements analysis. Use the following context to answer questions: {context}"
                 : "You are a helpful assistant with expertise in software testing and requirements analysis.";
