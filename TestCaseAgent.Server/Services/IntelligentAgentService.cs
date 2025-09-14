@@ -311,7 +311,7 @@ This information is extracted from the Functional Requirements Specification doc
     private async Task<TestCase> GeneratePositiveTestCase(string requirementText, string requirementId, string userId)
     {
         var title = $"Positive Test Case for {requirementId}";
-        var description = $"Verify that the system correctly implements the requirement: {requirementText.Take(100)}...";
+        var description = $"Verify that the system correctly implements the requirement: {(requirementText.Length > 100 ? requirementText.Substring(0, 100) + "..." : requirementText)}";
         
         return await Task.FromResult(new TestCase
         {
@@ -329,7 +329,7 @@ This information is extracted from the Functional Requirements Specification doc
     private async Task<TestCase> GenerateNegativeTestCase(string requirementText, string requirementId, string userId)
     {
         var title = $"Negative Test Case for {requirementId}";
-        var description = $"Verify that the system handles invalid inputs gracefully for requirement: {requirementText.Take(100)}...";
+        var description = $"Verify that the system handles invalid inputs gracefully for requirement: {(requirementText.Length > 100 ? requirementText.Substring(0, 100) + "..." : requirementText)}";
         
         return await Task.FromResult(new TestCase
         {
@@ -347,7 +347,7 @@ This information is extracted from the Functional Requirements Specification doc
     private async Task<TestCase> GenerateBoundaryTestCase(string requirementText, string requirementId, string userId)
     {
         var title = $"Boundary Test Case for {requirementId}";
-        var description = $"Verify boundary conditions for requirement: {requirementText.Take(100)}...";
+        var description = $"Verify boundary conditions for requirement: {(requirementText.Length > 100 ? requirementText.Substring(0, 100) + "..." : requirementText)}";
         
         return await Task.FromResult(new TestCase
         {
@@ -399,7 +399,7 @@ This information is extracted from the Functional Requirements Specification doc
 
     private async Task<TestCase> CreateTestCaseFromContent(string prompt, string relevantContent, string userId)
     {
-        var title = $"Test Case: {prompt.Take(50)}...";
+        var title = $"Test Case: {(prompt.Length > 50 ? prompt.Substring(0, 50) + "..." : prompt)}";
         var description = $"Generated test case based on user request: {prompt}";
         
         return await Task.FromResult(new TestCase
