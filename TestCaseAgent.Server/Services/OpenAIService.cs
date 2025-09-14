@@ -40,6 +40,15 @@ public class OpenAIService : IOpenAIService
         {
             _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
             _logger.LogInformation("OpenAI service initialized with model: {Model}", _model);
+            
+            // Additional validation advice for project-scoped keys
+            if (_apiKey.StartsWith("sk-proj-"))
+            {
+                _logger.LogInformation("Detected project-scoped API key. If you encounter authentication errors, please verify:");
+                _logger.LogInformation("1. The API key is active at: https://platform.openai.com/account/api-keys");
+                _logger.LogInformation("2. Your project has access to model: {Model}", _model);
+                _logger.LogInformation("3. Your OpenAI account has sufficient credits");
+            }
         }
         else
         {
@@ -69,8 +78,9 @@ public class OpenAIService : IOpenAIService
         if (placeholderValues.Any(placeholder => apiKey.Contains(placeholder, StringComparison.OrdinalIgnoreCase)))
             return false;
             
-        // Check basic format
-        return apiKey.StartsWith("sk-") && apiKey.Length >= 20;
+        // Check basic format - support both traditional and project-scoped API keys
+        var validPrefixes = new[] { "sk-", "sk-proj-" };
+        return validPrefixes.Any(prefix => apiKey.StartsWith(prefix)) && apiKey.Length >= 20;
     }
     
     private void ThrowConfigurationError()
@@ -111,14 +121,15 @@ Please replace it with your actual OpenAI API key from: https://platform.openai.
 Valid OpenAI API keys start with 'sk-' followed by a long string of characters.";
         }
         
-        // Check basic format
-        if (!_apiKey.StartsWith("sk-") || _apiKey.Length < 20)
+        // Check basic format - support both traditional and project-scoped API keys
+        var validPrefixes = new[] { "sk-", "sk-proj-" };
+        if (!validPrefixes.Any(prefix => _apiKey.StartsWith(prefix)) || _apiKey.Length < 20)
         {
             return $@"OpenAI API key format appears invalid: {MaskApiKey(_apiKey)}
 
 Valid OpenAI API keys:
-- Start with 'sk-'
-- Are typically 51 characters long
+- Start with 'sk-' (traditional) or 'sk-proj-' (project-scoped)
+- Are typically 51-120 characters long
 - Contain only alphanumeric characters and hyphens
 
 Please verify your API key from: https://platform.openai.com/account/api-keys";
@@ -127,6 +138,50 @@ Please verify your API key from: https://platform.openai.com/account/api-keys";
         return $"OpenAI API key validation failed: {MaskApiKey(_apiKey)}";
     }
     
+    private string BuildUnauthorizedErrorMessage(string errorContent)
+    {
+        var maskedKey = MaskApiKey(_apiKey);
+        
+        // Parse the error to provide specific guidance
+        if (errorContent.Contains("invalid_api_key") || errorContent.Contains("Incorrect API key"))
+        {
+            return $@"OpenAI API key authentication failed. The API key is invalid or inactive.
+
+API Key (masked): {maskedKey}
+
+Troubleshooting steps:
+1. Verify your API key is correct:
+   - Check for typos or extra spaces
+   - Ensure the key is copied completely
+   
+2. Check API key status:
+   - Visit: https://platform.openai.com/account/api-keys
+   - Ensure the key is active and not revoked
+   
+3. For project-scoped keys (sk-proj-*):
+   - Ensure the key has access to the required model: {_model}
+   - Check project permissions and settings
+   
+4. If using user secrets or environment variables:
+   - Verify the configuration source is correct
+   - Restart the application after updating the key
+
+Error details: {errorContent}";
+        }
+        
+        // Generic unauthorized error
+        return $@"OpenAI API authentication failed. Please verify your API key is correct and active.
+
+API Key (masked): {maskedKey}
+
+Please check:
+- API key is valid and active at: https://platform.openai.com/account/api-keys
+- Account has sufficient credits and is in good standing
+- API key has access to the model: {_model}
+
+Error details: {errorContent}";
+    }
+
     private string MaskApiKey(string apiKey)
     {
         if (string.IsNullOrEmpty(apiKey))
@@ -177,7 +232,7 @@ Please verify your API key from: https://platform.openai.com/account/api-keys";
                 // Provide specific error messages based on status code
                 var errorMessage = response.StatusCode switch
                 {
-                    System.Net.HttpStatusCode.Unauthorized => $"OpenAI API authentication failed. Please verify your API key is correct and active.\nAPI Key (masked): {MaskApiKey(_apiKey)}\nError details: {errorContent}",
+                    System.Net.HttpStatusCode.Unauthorized => BuildUnauthorizedErrorMessage(errorContent),
                     System.Net.HttpStatusCode.PaymentRequired => "OpenAI API billing issue. Please check your account billing and usage limits.",
                     System.Net.HttpStatusCode.TooManyRequests => "OpenAI API rate limit exceeded. Please try again later.",
                     System.Net.HttpStatusCode.InternalServerError => "OpenAI API server error. Please try again later.",
