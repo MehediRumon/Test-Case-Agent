@@ -26,11 +26,11 @@ public class OpenAIService : IOpenAIService
         _httpClient = httpClient;
         _logger = logger;
         
-        _apiKey = configuration["OpenAI:ApiKey"] ?? "";
-        if (string.IsNullOrEmpty(_apiKey))
-        {
-            throw new InvalidOperationException("OpenAI API key is not configured. Please set the OpenAI:ApiKey in appsettings.json");
-        }
+        // Try multiple configuration sources for API key
+        _apiKey = GetApiKeyFromConfiguration(configuration);
+        
+        // Validate API key is properly configured
+        ValidateApiKey(_apiKey);
 
         _model = configuration["OpenAI:Model"] ?? "gpt-4o-mini";
         _maxTokens = int.Parse(configuration["OpenAI:MaxTokens"] ?? "2000");
@@ -38,6 +38,87 @@ public class OpenAIService : IOpenAIService
 
         _httpClient.BaseAddress = new Uri("https://api.openai.com/");
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+        
+        _logger.LogInformation("OpenAI service initialized with model: {Model}", _model);
+    }
+    
+    private string GetApiKeyFromConfiguration(IConfiguration configuration)
+    {
+        // Try different configuration sources in order of preference
+        var apiKey = configuration["OpenAI:ApiKey"] ??
+                    configuration["OPENAI_API_KEY"] ??
+                    Environment.GetEnvironmentVariable("OPENAI_API_KEY") ??
+                    "";
+                    
+        _logger.LogDebug("OpenAI API key source: {HasKey}", !string.IsNullOrEmpty(apiKey) ? "Found" : "Not found");
+        return apiKey;
+    }
+    
+    private void ValidateApiKey(string apiKey)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            var errorMessage = @"OpenAI API key is not configured. Please configure it using one of these methods:
+
+1. Add to appsettings.json:
+   ""OpenAI"": {
+     ""ApiKey"": ""sk-your-actual-openai-api-key-here""
+   }
+
+2. Set environment variable:
+   OPENAI_API_KEY=sk-your-actual-openai-api-key-here
+
+3. Use .NET user secrets:
+   dotnet user-secrets set ""OpenAI:ApiKey"" ""sk-your-actual-openai-api-key-here""
+
+Get your API key from: https://platform.openai.com/account/api-keys";
+
+            _logger.LogError("OpenAI API key validation failed: {Error}", errorMessage);
+            throw new InvalidOperationException(errorMessage);
+        }
+        
+        // Check for placeholder values
+        var placeholderValues = new[] { "your-openai-api-key", "your-openai-api-key-here", "sk-your-key-here" };
+        if (placeholderValues.Any(placeholder => apiKey.Contains(placeholder, StringComparison.OrdinalIgnoreCase)))
+        {
+            var errorMessage = $@"OpenAI API key appears to be a placeholder value: {MaskApiKey(apiKey)}
+
+Please replace it with your actual OpenAI API key from: https://platform.openai.com/account/api-keys
+
+Valid OpenAI API keys start with 'sk-' followed by a long string of characters.";
+
+            _logger.LogError("OpenAI API key validation failed - placeholder detected: {MaskedKey}", MaskApiKey(apiKey));
+            throw new InvalidOperationException(errorMessage);
+        }
+        
+        // Check basic format
+        if (!apiKey.StartsWith("sk-") || apiKey.Length < 20)
+        {
+            var errorMessage = $@"OpenAI API key format appears invalid: {MaskApiKey(apiKey)}
+
+Valid OpenAI API keys:
+- Start with 'sk-'
+- Are typically 51 characters long
+- Contain only alphanumeric characters and hyphens
+
+Please verify your API key from: https://platform.openai.com/account/api-keys";
+
+            _logger.LogError("OpenAI API key validation failed - invalid format: {MaskedKey}", MaskApiKey(apiKey));
+            throw new InvalidOperationException(errorMessage);
+        }
+        
+        _logger.LogInformation("OpenAI API key validation passed: {MaskedKey}", MaskApiKey(apiKey));
+    }
+    
+    private string MaskApiKey(string apiKey)
+    {
+        if (string.IsNullOrEmpty(apiKey))
+            return "[empty]";
+            
+        if (apiKey.Length <= 8)
+            return "***";
+            
+        return apiKey.Substring(0, 6) + "***" + apiKey.Substring(Math.Max(6, apiKey.Length - 4));
     }
 
     public async Task<string> GenerateResponseAsync(string prompt, string context = "")
@@ -69,7 +150,18 @@ public class OpenAIService : IOpenAIService
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogError("OpenAI API error: {StatusCode} - {Content}", response.StatusCode, errorContent);
-                throw new HttpRequestException($"OpenAI API error: {response.StatusCode}");
+                
+                // Provide specific error messages based on status code
+                var errorMessage = response.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.Unauthorized => $"OpenAI API authentication failed. Please verify your API key is correct and active.\nAPI Key (masked): {MaskApiKey(_apiKey)}\nError details: {errorContent}",
+                    System.Net.HttpStatusCode.PaymentRequired => "OpenAI API billing issue. Please check your account billing and usage limits.",
+                    System.Net.HttpStatusCode.TooManyRequests => "OpenAI API rate limit exceeded. Please try again later.",
+                    System.Net.HttpStatusCode.InternalServerError => "OpenAI API server error. Please try again later.",
+                    _ => $"OpenAI API error: {response.StatusCode} - {errorContent}"
+                };
+                
+                throw new HttpRequestException(errorMessage);
             }
 
             var responseContent = await response.Content.ReadAsStringAsync();

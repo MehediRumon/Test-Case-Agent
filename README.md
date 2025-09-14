@@ -60,7 +60,8 @@ These URIs correspond to the authentication callback endpoints that Google will 
 ### 2. Application Configuration
 
 1. Clone the repository
-2. Update `TestCaseAgent.Server/appsettings.json`:
+2. **Configure OpenAI API Key** - **📋 For detailed OpenAI setup instructions, see [OPENAI_SETUP.md](OPENAI_SETUP.md)**
+3. Update `TestCaseAgent.Server/appsettings.json`:
    ```json
    {
      "Authentication": {
@@ -70,13 +71,14 @@ These URIs correspond to the authentication callback endpoints that Google will 
        }
      },
      "OpenAI": {
-       "ApiKey": "your-openai-api-key",
+       "ApiKey": "sk-your-actual-openai-api-key-here",
        "Model": "gpt-4o-mini",
        "MaxTokens": 2000,
        "Temperature": 0.7
      }
    }
    ```
+   **⚠️ Important**: Replace `sk-your-actual-openai-api-key-here` with your real OpenAI API key from https://platform.openai.com/account/api-keys
 
 ### 3. Running the Application
 
