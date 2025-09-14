@@ -6,17 +6,19 @@ public class ConfigurationValidationService : IHostedService
 {
     private readonly ILogger<ConfigurationValidationService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IServiceProvider _serviceProvider;
 
-    public ConfigurationValidationService(ILogger<ConfigurationValidationService> logger, IConfiguration configuration)
+    public ConfigurationValidationService(ILogger<ConfigurationValidationService> logger, IConfiguration configuration, IServiceProvider serviceProvider)
     {
         _logger = logger;
         _configuration = configuration;
+        _serviceProvider = serviceProvider;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        ValidateConfiguration();
-        return Task.CompletedTask;
+        await ValidateConfigurationAsync();
+        return;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -24,12 +26,12 @@ public class ConfigurationValidationService : IHostedService
         return Task.CompletedTask;
     }
 
-    private void ValidateConfiguration()
+    private async Task ValidateConfigurationAsync()
     {
         _logger.LogInformation("Starting configuration validation...");
 
         // Validate OpenAI configuration
-        ValidateOpenAIConfiguration();
+        await ValidateOpenAIConfigurationAsync();
 
         // Validate Google OAuth configuration
         ValidateGoogleOAuthConfiguration();
@@ -37,7 +39,7 @@ public class ConfigurationValidationService : IHostedService
         _logger.LogInformation("Configuration validation completed");
     }
 
-    private void ValidateOpenAIConfiguration()
+    private async Task ValidateOpenAIConfigurationAsync()
     {
         var apiKey = _configuration["OpenAI:ApiKey"] ??
                     _configuration["OPENAI_API_KEY"] ??
@@ -65,14 +67,19 @@ Get your API key from: https://platform.openai.com/account/api-keys");
         }
 
         // Check for placeholder values
-        var placeholderValues = new[] { "your-openai-api-key", "your-openai-api-key-here", "sk-your-key-here" };
+        var placeholderValues = new[] { 
+            "your-openai-api-key", 
+            "your-openai-api-key-here", 
+            "sk-your-key-here",
+            "sk-your-actual-openai-api-key-here"
+        };
         if (placeholderValues.Any(placeholder => apiKey.Contains(placeholder, StringComparison.OrdinalIgnoreCase)))
         {
             _logger.LogWarning(@"⚠️  OpenAI API key appears to be a placeholder value: {ApiKey}
 
 Please replace it with your actual OpenAI API key from: https://platform.openai.com/account/api-keys
 
-Valid OpenAI API keys start with 'sk-' followed by a long string of characters.", MaskApiKey(apiKey));
+Valid OpenAI API keys start with 'sk-' or 'sk-proj-' followed by a long string of characters.", MaskApiKey(apiKey));
             return;
         }
 
@@ -91,7 +98,52 @@ Please verify your API key from: https://platform.openai.com/account/api-keys", 
             return;
         }
 
-        _logger.LogInformation("✅ OpenAI API key configuration looks valid: {ApiKey}", MaskApiKey(apiKey));
+        // Format looks good, try to validate with OpenAI if service is available
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var openAIService = scope.ServiceProvider.GetService<IOpenAIService>();
+            
+            if (openAIService != null)
+            {
+                _logger.LogInformation("🔍 Testing API key with OpenAI...");
+                var validationResult = await openAIService.ValidateApiKeyAsync();
+                
+                if (validationResult.IsValid)
+                {
+                    _logger.LogInformation("✅ OpenAI API key validated successfully: {ApiKey}", MaskApiKey(apiKey));
+                    if (apiKey.StartsWith("sk-proj-"))
+                    {
+                        _logger.LogInformation("ℹ️  Project-scoped API key detected. Ensure project has access to required models.");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(@"❌ OpenAI API key validation failed: {ApiKey}
+
+Error: {ErrorMessage}
+Recommendation: {Recommendation}
+
+🔧 Common Solutions:
+1. Verify the key is active at: https://platform.openai.com/account/api-keys
+2. Check billing status: https://platform.openai.com/account/billing
+3. For project keys: verify project permissions and model access
+4. Try regenerating the API key if it might be compromised", 
+                        MaskApiKey(apiKey), 
+                        validationResult.ErrorMessage, 
+                        validationResult.Recommendation);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("✅ OpenAI API key configuration looks valid: {ApiKey} (service validation skipped)", MaskApiKey(apiKey));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️  Could not validate OpenAI API key: {ApiKey}. Will proceed with basic format validation only.", MaskApiKey(apiKey));
+            _logger.LogInformation("✅ OpenAI API key format is valid: {ApiKey}", MaskApiKey(apiKey));
+        }
     }
 
     private void ValidateGoogleOAuthConfiguration()

@@ -106,15 +106,69 @@ OpenAI API error: Unauthorized - {
 ```
 
 **Solutions:**
+
+#### Step 1: Verify API Key Format and Configuration
 1. **Check if you're using a placeholder**: Look for values like `your-openai-api-key-here`
 2. **Verify the key format**: Should start with `sk-` or `sk-proj-` and be 51-120 characters
 3. **Check for typos**: Ensure no extra spaces or characters
-4. **Verify the key is active**: Visit https://platform.openai.com/account/api-keys and check status
-5. **For project-scoped keys (`sk-proj-`)**:
-   - Ensure your project has access to the model you're using (default: `gpt-4o-mini`)
-   - Check project permissions and settings
+4. **Test configuration loading**: Use the diagnostics endpoint:
+   ```bash
+   curl http://localhost:5000/api/diagnostics/configuration-info
+   ```
+
+#### Step 2: Validate API Key with OpenAI
+1. **Check API key status**: Visit https://platform.openai.com/account/api-keys and verify:
+   - Key shows as "Active" (green indicator)
+   - Key hasn't been revoked or expired
+   - Last used date is recent if you've used it elsewhere
+
+2. **Test the key directly** using the diagnostics endpoint:
+   ```bash
+   curl http://localhost:5000/api/diagnostics/openai-status
+   ```
+
+3. **Test with curl directly**:
+   ```bash
+   curl -H "Authorization: Bearer sk-your-actual-api-key" https://api.openai.com/v1/models
+   ```
+
+#### Step 3: For Project-Scoped Keys (`sk-proj-*`)
+Project-scoped keys have additional requirements:
+
+1. **Check project status**:
+   - Visit: https://platform.openai.com/settings/organization/projects
+   - Ensure your project exists and is active
    - Verify project isn't suspended or restricted
-6. **Test your key directly**: Use the OpenAI Playground or API directly
+
+2. **Verify model access**:
+   - Ensure the project has access to model: `gpt-4o-mini` (default)
+   - Check project permissions and quotas
+   - Some models may not be available to all projects
+
+3. **Check project billing**:
+   - Ensure project has billing configured
+   - Verify sufficient credits in project budget
+   - Check project-specific usage limits
+
+#### Step 4: Account and Billing Issues
+1. **Verify billing status**: Visit https://platform.openai.com/account/billing
+2. **Check account standing**: Ensure account is in good standing
+3. **Review usage limits**: Check you haven't exceeded monthly quotas
+4. **Add payment method**: If using free tier, consider upgrading
+
+#### Step 5: Configuration Troubleshooting
+1. **Configuration precedence**: Environment variables override appsettings.json
+2. **Restart application**: Configuration may be cached
+3. **Check file location**: Ensure appsettings.json is in the correct directory
+4. **Validate JSON syntax**: Ensure valid JSON format
+
+#### Step 6: Advanced Diagnostics
+The application now includes enhanced diagnostics:
+
+1. **Real-time validation**: The app tests your API key on startup
+2. **Detailed error messages**: Specific guidance for different error types
+3. **Configuration detection**: Shows which configuration source is being used
+4. **Key type identification**: Distinguishes between traditional and project-scoped keys
 
 ### Issue: Configuration Not Loading
 
@@ -152,33 +206,157 @@ OpenAI API error: TooManyRequests
 
 After configuring your API key, you can test it by:
 
-1. **Starting the application**:
+### Method 1: Application Startup Validation
+1. **Start the application**:
    ```bash
    cd TestCaseAgent.Server
    dotnet run
    ```
 
 2. **Check the startup logs** for configuration validation messages:
-   - ✅ `OpenAI API key configuration looks valid: sk-***LgwA`
+   - ✅ `OpenAI API key validated successfully: sk-***LgwA`
    - ✅ `Detected project-scoped API key` (for sk-proj- keys)
    - ⚠️ `OpenAI API key appears to be a placeholder value`
+   - ❌ `OpenAI API key validation failed` (with specific error details)
 
-3. **Test the AI chat feature** through the web interface
+### Method 2: Diagnostics API Endpoints
+The application provides real-time diagnostics:
 
-4. **Check application logs** for any API errors
-
-## Troubleshooting Steps
-
-If you're still having issues:
-
-1. **Check the application logs** for specific error messages
-2. **Verify your OpenAI account status** at https://platform.openai.com/account
-3. **Test your API key directly** using curl:
+1. **Configuration Information**:
    ```bash
-   curl https://api.openai.com/v1/models \
-     -H "Authorization: Bearer sk-your-actual-api-key-here"
+   curl http://localhost:5000/api/diagnostics/configuration-info
    ```
-4. **Contact OpenAI support** if the key should be working but isn't
+   Returns:
+   ```json
+   {
+     "openAI": {
+       "hasApiKey": true,
+       "keyType": "Project-scoped",
+       "model": "gpt-4o-mini",
+       "configurationSource": "appsettings.json"
+     }
+   }
+   ```
+
+2. **API Key Validation**:
+   ```bash
+   curl http://localhost:5000/api/diagnostics/openai-status
+   ```
+   Returns detailed validation results:
+   ```json
+   {
+     "isValid": false,
+     "errorMessage": "OpenAI API returned Unauthorized: {...}",
+     "recommendation": "For project-scoped keys: verify project has necessary permissions",
+     "keyType": "Project-scoped"
+   }
+   ```
+
+3. **Test API Call**:
+   ```bash
+   curl -X POST -H "Content-Type: application/json" \
+        -d '"Hello, this is a test."' \
+        http://localhost:5000/api/diagnostics/test-openai
+   ```
+
+### Method 3: Web Interface Testing
+1. Navigate to the web application at `https://localhost:5001`
+2. Go to the **AI Chat** page
+3. Ask a test question to verify the AI features work
+4. Check application logs for any API errors
+
+### Method 4: Direct API Testing
+Test your API key outside the application:
+```bash
+curl -H "Authorization: Bearer sk-your-actual-api-key" \
+     https://api.openai.com/v1/models
+```
+
+## "My API Key is Correct But Still Getting Errors"
+
+If you're confident your API key is correct but still experiencing authentication failures, follow this systematic troubleshooting approach:
+
+### Quick Diagnostics
+1. **Run the built-in diagnostics**:
+   ```bash
+   curl http://localhost:5000/api/diagnostics/openai-status
+   ```
+   This will show exactly what error OpenAI is returning and provide specific recommendations.
+
+2. **Check the exact error message**. Common scenarios:
+
+#### Scenario 1: "Incorrect API key provided"
+- **Cause**: Key is invalid, revoked, or has insufficient permissions
+- **Solution**: 
+  - Verify key is active at https://platform.openai.com/account/api-keys
+  - For project keys: check project permissions and model access
+  - Try regenerating the key if it might be compromised
+
+#### Scenario 2: Network/DNS Issues
+- **Error**: `Name or service not known (api.openai.com:443)`
+- **Cause**: Network connectivity or DNS resolution problems
+- **Solution**: 
+  - Check internet connectivity
+  - Try from a different network
+  - Verify firewall/proxy settings
+
+#### Scenario 3: Rate Limiting or Quota Exceeded
+- **Error**: `TooManyRequests` or billing-related errors
+- **Cause**: Account limits exceeded
+- **Solution**: 
+  - Check usage at https://platform.openai.com/account/usage
+  - Add billing information or upgrade plan
+  - Wait for quota reset
+
+#### Scenario 4: Model Access Issues (Project-Scoped Keys)
+- **Error**: Model not available or access denied
+- **Cause**: Project doesn't have access to the requested model
+- **Solution**:
+  - Check project settings at https://platform.openai.com/settings/organization/projects
+  - Ensure project has access to `gpt-4o-mini`
+  - Verify project billing and limits
+
+### Step-by-Step Verification Process
+
+1. **Format Check**: 
+   ```bash
+   # Your key should look like one of these:
+   sk-1234567890abcdef1234567890abcdef1234567890abcdef123  # Traditional
+   sk-proj-1234567890abcdef1234567890abcdef1234567890abcdef123  # Project-scoped
+   ```
+
+2. **Direct API Test**:
+   ```bash
+   curl -H "Authorization: Bearer YOUR_KEY_HERE" \
+        https://api.openai.com/v1/models
+   ```
+   If this fails, the issue is with the key itself, not the application.
+
+3. **Configuration Verification**:
+   ```bash
+   curl http://localhost:5000/api/diagnostics/configuration-info
+   ```
+   Ensure the application is loading your key from the expected source.
+
+4. **Test with Known-Good Key**:
+   - If possible, test with a different API key
+   - Or test your key in OpenAI Playground: https://platform.openai.com/playground
+
+5. **Check Account Status**:
+   - Visit https://platform.openai.com/account/billing
+   - Ensure account is in good standing
+   - Verify payment method and billing information
+
+### Still Having Issues?
+
+If none of the above resolves the issue:
+
+1. **Enable detailed logging** by setting log level to Debug in appsettings.json
+2. **Contact OpenAI support** with your account details (never share your actual API key)
+3. **Try creating a new API key** - sometimes keys can become corrupted
+4. **Check OpenAI status** at https://status.openai.com for service issues
+
+The enhanced error handling in this application will provide specific, actionable guidance for most common scenarios.
 
 ## Configuration Priority
 

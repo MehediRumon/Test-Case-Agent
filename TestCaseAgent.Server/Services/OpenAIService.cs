@@ -10,6 +10,7 @@ public interface IOpenAIService
     Task<AgentResponse> AnswerQuestionAsync(string question, string frsContent);
     Task<List<TestCase>> GenerateTestCasesAsync(string requirementText, string requirementId, string userId);
     Task<TestCase> GenerateTestCaseFromPromptAsync(string prompt, string frsContent, string userId);
+    Task<ApiKeyValidationResult> ValidateApiKeyAsync();
 }
 
 public class OpenAIService : IOpenAIService
@@ -74,13 +75,95 @@ public class OpenAIService : IOpenAIService
             return false;
             
         // Check for placeholder values
-        var placeholderValues = new[] { "your-openai-api-key", "your-openai-api-key-here", "sk-your-key-here" };
+        var placeholderValues = new[] { 
+            "your-openai-api-key", 
+            "your-openai-api-key-here", 
+            "sk-your-key-here",
+            "sk-your-actual-openai-api-key-here",
+            "replace-with-your-key",
+            "insert-api-key-here"
+        };
         if (placeholderValues.Any(placeholder => apiKey.Contains(placeholder, StringComparison.OrdinalIgnoreCase)))
             return false;
             
         // Check basic format - support both traditional and project-scoped API keys
         var validPrefixes = new[] { "sk-", "sk-proj-" };
-        return validPrefixes.Any(prefix => apiKey.StartsWith(prefix)) && apiKey.Length >= 20;
+        if (!validPrefixes.Any(prefix => apiKey.StartsWith(prefix)))
+            return false;
+            
+        // Validate length (OpenAI keys are typically 51-120 characters)
+        if (apiKey.Length < 51 || apiKey.Length > 200)
+            return false;
+            
+        // Validate character set (alphanumeric and hyphens/underscores only)
+        if (!System.Text.RegularExpressions.Regex.IsMatch(apiKey, @"^[a-zA-Z0-9\-_]+$"))
+            return false;
+            
+        return true;
+    }
+    
+    /// <summary>
+    /// Tests if an API key can authenticate with OpenAI (lightweight check)
+    /// </summary>
+    public async Task<ApiKeyValidationResult> ValidateApiKeyAsync()
+    {
+        if (!IsValidApiKeyFormat(_apiKey))
+        {
+            return new ApiKeyValidationResult
+            {
+                IsValid = false,
+                ErrorMessage = "API key format is invalid",
+                Recommendation = "Check that your API key starts with 'sk-' or 'sk-proj-' and is properly formatted"
+            };
+        }
+
+        try
+        {
+            // Use the models endpoint for a lightweight validation
+            var request = new HttpRequestMessage(HttpMethod.Get, "v1/models");
+            request.Headers.Add("Authorization", $"Bearer {_apiKey}");
+            
+            var response = await _httpClient.SendAsync(request);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                return new ApiKeyValidationResult
+                {
+                    IsValid = true,
+                    ErrorMessage = null,
+                    Recommendation = "API key is valid and working"
+                };
+            }
+            
+            var errorContent = await response.Content.ReadAsStringAsync();
+            var isProjectScoped = _apiKey.StartsWith("sk-proj-");
+            
+            var recommendation = response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.Unauthorized => isProjectScoped ? 
+                    "For project-scoped keys: verify project has necessary permissions and model access" :
+                    "Check that your API key is active and hasn't been revoked",
+                System.Net.HttpStatusCode.PaymentRequired => "Add billing information or check account balance",
+                System.Net.HttpStatusCode.TooManyRequests => "You've hit rate limits - this usually means the key works",
+                _ => "Unknown error - check OpenAI service status"
+            };
+            
+            return new ApiKeyValidationResult
+            {
+                IsValid = false,
+                ErrorMessage = $"OpenAI API returned {response.StatusCode}: {errorContent}",
+                Recommendation = recommendation
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiKeyValidationResult
+            {
+                IsValid = false,
+                ErrorMessage = $"Failed to validate API key: {ex.Message}",
+                Recommendation = "Check network connectivity and API key configuration"
+            };
+        }
     }
     
     private void ThrowConfigurationError()
@@ -141,45 +224,114 @@ Please verify your API key from: https://platform.openai.com/account/api-keys";
     private string BuildUnauthorizedErrorMessage(string errorContent)
     {
         var maskedKey = MaskApiKey(_apiKey);
+        var isProjectScoped = _apiKey.StartsWith("sk-proj-");
         
         // Parse the error to provide specific guidance
         if (errorContent.Contains("invalid_api_key") || errorContent.Contains("Incorrect API key"))
         {
-            return $@"OpenAI API key authentication failed. The API key is invalid or inactive.
+            var troubleshootingSteps = isProjectScoped ? 
+                BuildProjectScopedTroubleshooting() : 
+                BuildTraditionalKeyTroubleshooting();
+                
+            return $@"🚫 OpenAI API Key Authentication Failed
+
+The OpenAI API rejected your API key as invalid or inactive.
+
+API Key Type: {(isProjectScoped ? "Project-scoped" : "Traditional")} (masked): {maskedKey}
+Model Requested: {_model}
+
+{troubleshootingSteps}
+
+🔍 Advanced Troubleshooting:
+• Test your key directly with curl:
+  curl -H ""Authorization: Bearer {_apiKey.Substring(0, 8)}..."" https://api.openai.com/v1/models
+• Check if key works in OpenAI Playground: https://platform.openai.com/playground
+• Verify billing status: https://platform.openai.com/account/billing
+• Contact OpenAI support if the key should be working
+
+Raw Error: {errorContent}";
+        }
+        
+        // Check for specific error patterns
+        if (errorContent.Contains("billing") || errorContent.Contains("quota") || errorContent.Contains("exceeded"))
+        {
+            return $@"💳 OpenAI Billing/Quota Issue
+
+Your OpenAI account has billing or usage quota problems.
 
 API Key (masked): {maskedKey}
 
-Troubleshooting steps:
-1. Verify your API key is correct:
-   - Check for typos or extra spaces
-   - Ensure the key is copied completely
-   
-2. Check API key status:
-   - Visit: https://platform.openai.com/account/api-keys
-   - Ensure the key is active and not revoked
-   
-3. For project-scoped keys (sk-proj-*):
-   - Ensure the key has access to the required model: {_model}
-   - Check project permissions and settings
-   
-4. If using user secrets or environment variables:
-   - Verify the configuration source is correct
-   - Restart the application after updating the key
+Immediate Actions:
+1. Check billing status: https://platform.openai.com/account/billing
+2. Add payment method if needed
+3. Check usage limits: https://platform.openai.com/account/usage
+4. Verify you haven't exceeded rate limits
 
 Error details: {errorContent}";
         }
         
-        // Generic unauthorized error
-        return $@"OpenAI API authentication failed. Please verify your API key is correct and active.
+        // Generic unauthorized error with enhanced guidance
+        return $@"🔐 OpenAI API Authentication Failed
+
+Authentication failed for an unknown reason.
 
 API Key (masked): {maskedKey}
+Key Type: {(isProjectScoped ? "Project-scoped (sk-proj-)" : "Traditional (sk-)")}
 
-Please check:
-- API key is valid and active at: https://platform.openai.com/account/api-keys
-- Account has sufficient credits and is in good standing
-- API key has access to the model: {_model}
+Quick Fixes:
+1. 🔄 Restart the application (configuration may be cached)
+2. 🔑 Regenerate your API key if it might be compromised
+3. 📋 Copy the key again (avoid extra spaces/characters)
+4. 💰 Check account status and billing
+
+Verification Steps:
+• Ensure API key is active: https://platform.openai.com/account/api-keys
+• Verify account standing: https://platform.openai.com/account/billing
+• Test model access: https://platform.openai.com/playground
+
+{(isProjectScoped ? "Project-Scoped Key Notes:\n• Verify project has model access\n• Check project-level billing\n• Ensure project isn't suspended" : "")}
 
 Error details: {errorContent}";
+    }
+    
+    private string BuildProjectScopedTroubleshooting()
+    {
+        return @"📋 Project-Scoped Key Troubleshooting:
+
+1. 🎯 Project Access:
+   • Go to: https://platform.openai.com/settings/organization/projects
+   • Verify your project exists and is active
+   • Ensure the project has access to model: " + _model + @"
+   
+2. 🔑 API Key Status:
+   • Visit: https://platform.openai.com/account/api-keys
+   • Check if key shows as ""Active"" (not revoked/expired)
+   • Verify key is associated with correct project
+   
+3. 💰 Project Billing:
+   • Ensure project has billing configured
+   • Check project-specific usage limits
+   • Verify sufficient credits in project budget";
+    }
+    
+    private string BuildTraditionalKeyTroubleshooting()
+    {
+        return @"🔑 Traditional Key Troubleshooting:
+
+1. ✅ Key Validation:
+   • Check for typos or extra spaces
+   • Ensure complete key was copied (usually 51+ characters)
+   • Verify it starts with 'sk-' followed by 48+ characters
+   
+2. 🌐 Account Status:
+   • Visit: https://platform.openai.com/account/api-keys
+   • Ensure key is ""Active"" (green status indicator)
+   • Check last used date to confirm it's working elsewhere
+   
+3. 💳 Billing & Limits:
+   • Verify payment method: https://platform.openai.com/account/billing
+   • Check you haven't exceeded monthly usage limits
+   • Ensure account is in good standing";
     }
 
     private string MaskApiKey(string apiKey)
@@ -579,4 +731,14 @@ public class Choice
 public class Message
 {
     public string Content { get; set; } = "";
+}
+
+/// <summary>
+/// Result of API key validation
+/// </summary>
+public class ApiKeyValidationResult
+{
+    public bool IsValid { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? Recommendation { get; set; }
 }
