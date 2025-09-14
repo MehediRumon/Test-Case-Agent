@@ -64,6 +64,9 @@ builder.Services.AddScoped<IIntelligentAgentService, IntelligentAgentService>();
 builder.Services.AddSingleton<IDocumentService, DocumentService>(); // Changed to Singleton for in-memory demo storage
 builder.Services.AddScoped<IAuditService, AuditService>();
 
+// Add configuration validation service
+builder.Services.AddSingleton<IHostedService, ConfigurationValidationService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
