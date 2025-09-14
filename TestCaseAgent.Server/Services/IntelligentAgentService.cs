@@ -31,6 +31,31 @@ public class IntelligentAgentService : IIntelligentAgentService
             // Use OpenAI service for intelligent responses
             return await _openAIService.AnswerQuestionAsync(question, frsContent);
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("OpenAI API key"))
+        {
+            _logger.LogWarning("OpenAI API key configuration error detected, falling back to basic processing");
+            
+            // Get the basic response and extract just the answer
+            var basicResponse = await ProcessQuestionBasic(question, frsContent);
+            
+            // Provide a user-friendly response when API key is invalid
+            return new AgentResponse
+            {
+                Answer = $@"🤖 **AI Service Currently Unavailable**
+
+I'm unable to access the AI-powered response service right now due to a configuration issue, but I can still help you with basic information from the FRS document.
+
+**Your question:** {question}
+
+**Here's what I found in the FRS document:**
+
+{basicResponse.Answer}
+
+---
+*Note: The AI service requires proper OpenAI API key configuration. Please contact your system administrator if you need the full AI-powered features.*",
+                References = basicResponse.References
+            };
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing question: {Question}", question);
@@ -41,28 +66,30 @@ public class IntelligentAgentService : IIntelligentAgentService
             if (isConfigurationError)
             {
                 _logger.LogWarning("OpenAI configuration error detected, falling back to basic processing");
+                
+                // Get the basic response and extract just the answer
+                var basicResponse = await ProcessQuestionBasic(question, frsContent);
+                
                 return new AgentResponse
                 {
-                    Answer = $@"⚠️ **OpenAI Service Unavailable** ⚠️
+                    Answer = $@"🤖 **AI Service Temporarily Unavailable**
 
-The AI-powered response service is currently unavailable due to a configuration issue:
+The AI-powered response service encountered an issue, but I can still provide basic information from the FRS document.
 
-**Error**: {ex.Message}
+**Your question:** {question}
 
-**Falling back to basic search...**
+**Here's what I found:**
 
-{await ProcessQuestionBasic(question, frsContent)}
+{basicResponse.Answer}
 
-**To fix this issue:**
-1. Verify your OpenAI API key is correctly configured
-2. Check that your API key is active and has sufficient credits
-3. Review the application logs for detailed error information",
-                    References = ExtractRelevantSections(question, frsContent)
+---
+*The AI service will be restored once the configuration issue is resolved.*",
+                    References = basicResponse.References
                 };
             }
             
             // Fallback to basic processing if OpenAI fails
-            _logger.LogWarning("Falling back to basic question processing");
+            _logger.LogWarning("Falling back to basic question processing due to error: {Error}", ex.Message);
             return await ProcessQuestionBasic(question, frsContent);
         }
     }
@@ -75,6 +102,11 @@ The AI-powered response service is currently unavailable due to a configuration 
 
             // Use OpenAI service for intelligent test case generation
             return await _openAIService.GenerateTestCasesAsync(requirementText, requirementId, userId);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("OpenAI API key"))
+        {
+            _logger.LogWarning("OpenAI API key configuration error detected, falling back to basic test case generation");
+            return await GenerateTestCasesBasic(requirementText, requirementId, userId);
         }
         catch (Exception ex)
         {
@@ -94,6 +126,11 @@ The AI-powered response service is currently unavailable due to a configuration 
 
             // Use OpenAI service for intelligent test case generation
             return await _openAIService.GenerateTestCaseFromPromptAsync(prompt, frsContent, userId);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("OpenAI API key"))
+        {
+            _logger.LogWarning("OpenAI API key configuration error detected, falling back to basic test case generation");
+            return await CreateTestCaseFromContentBasic(prompt, frsContent, userId);
         }
         catch (Exception ex)
         {
